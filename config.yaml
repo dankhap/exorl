@@ -28,5 +28,5 @@ use_tb: false
 
 hydra:
   run:
-    dir: ./output/${now:%Y.%m.%d}/${now:%H%M%S}_${agent.name}
+    dir: /code/exorl/output/${now:%Y.%m.%d}/${now:%H%M%S}_${agent.name}
 

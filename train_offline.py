@@ -57,6 +57,26 @@ def eval(global_step, agent, env, logger, num_eval_episodes, video_recorder):
         log('episode_length', step / episode)
         log('step', global_step)
 
+def build_name(cfg, using_buffer):
+    name_parts = [
+        cfg.pretrained_agent,
+        str(cfg.seed)]
+    if using_buffer:
+        name_parts.append("buffered")
+
+    if cfg.snapshot_ts == 0:
+        name_parts.append("clean")
+    else:
+        name_parts.append("finetune")
+
+    if cfg.obs_type == "pixels":
+        if cfg.load_only_encoder:
+            name_parts.append("partial")
+        if cfg.agent.load_rm_encoder:
+            name_parts.append("load_rm")
+        else:
+            name_parts.append("clean_rm")
+    return name_parts
 
 @hydra.main(config_path='.', config_name='config')
 def main(cfg):
@@ -73,6 +93,7 @@ def main(cfg):
     env = dmc.make(cfg.task, seed=cfg.seed)
 
     # create agent
+    cfg.agent.obs_type = cfg.obs_type
     agent = hydra.utils.instantiate(cfg.agent,
                                     obs_shape=env.observation_spec().shape,
                                     action_shape=env.action_spec().shape)
@@ -90,7 +111,8 @@ def main(cfg):
     replay_loader = make_replay_loader(env, replay_dir, cfg.replay_buffer_size,
                                        cfg.batch_size,
                                        cfg.replay_buffer_num_workers,
-                                       cfg.discount)
+                                       cfg.discount,
+                                       cfg.obs_type)
     replay_iter = iter(replay_loader)
 
     # create video recorders

@@ -1,5 +1,6 @@
 defaults:
   - agent: td3
+  - obs_type_param: states
   - override hydra/launcher: submitit_local
 
 # unsupervised exploration

@@ -2,6 +2,7 @@
 _target_: agent.cql.CQLAgent
 name: cql
 obs_shape: ??? # to be specified later
+obs_type: ??? # to be specified later
 action_shape: ??? # to be specified later
 device: ${device}
 lr: 1e-4

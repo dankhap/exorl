@@ -8,6 +8,26 @@ from collections import OrderedDict
 import utils
 from dm_control.utils import rewards
 
+class Encoder(nn.Module):
+    def __init__(self, obs_shape):
+        super().__init__()
+
+        assert len(obs_shape) == 3
+        self.repr_dim = 32 * 35 * 35
+
+        self.convnet = nn.Sequential(nn.Conv2d(obs_shape[0], 32, 3, stride=2),
+                                     nn.ReLU(), nn.Conv2d(32, 32, 3, stride=1),
+                                     nn.ReLU(), nn.Conv2d(32, 32, 3, stride=1),
+                                     nn.ReLU(), nn.Conv2d(32, 32, 3, stride=1),
+                                     nn.ReLU())
+
+        self.apply(utils.weight_init)
+
+    def forward(self, obs):
+        obs = obs / 255.0 - 0.5
+        h = self.convnet(obs)
+        h = h.view(h.shape[0], -1)
+        return h
 
 class Actor(nn.Module):
     def __init__(self, obs_dim, action_dim, hidden_dim):
@@ -60,6 +80,7 @@ class Critic(nn.Module):
 class CQLAgent:
     def __init__(self,
                  name,
+                 obs_type,
                  obs_shape,
                  action_shape,
                  device,
@@ -86,6 +107,15 @@ class CQLAgent:
         self.alpha = alpha
         self.n_samples = n_samples
 
+        self.obs_type = obs_type
+        if obs_type == 'pixels':
+            self.aug = utils.RandomShiftsAug(pad=4)
+            self.encoder = Encoder(obs_shape).to(device)
+            self.obs_dim = self.encoder.repr_dim 
+        else:
+            self.aug = nn.Identity()
+            self.encoder = nn.Identity()
+            self.obs_dim = obs_shape[0] 
         # models
         self.actor = Actor(obs_shape[0], action_shape[0],
                            hidden_dim).to(device)
@@ -121,6 +151,7 @@ class CQLAgent:
 
     def act(self, obs, step, eval_mode):
         obs = torch.as_tensor(obs, device=self.device).unsqueeze(0)
+        obs = self.encoder(obs)
         policy = self.actor(obs)
         if eval_mode:
             action = policy.mean
@@ -150,8 +181,13 @@ class CQLAgent:
 
         return Q1, Q2
 
+    def aug_and_encode(self, obs):
+        obs = self.aug(obs)
+        return self.encoder(obs)
+
     def update_critic(self, obs, action, reward, discount, next_obs, step):
         metrics = dict()
+
 
         # Compute standard SAC loss
         with torch.no_grad():
@@ -268,6 +304,11 @@ class CQLAgent:
         batch = next(replay_iter)
         obs, action, reward, discount, next_obs = utils.to_torch(
             batch, self.device)
+
+        # augment and encode
+        obs = self.aug_and_encode(obs)
+        with torch.no_grad():
+            next_obs = self.aug_and_encode(next_obs)
 
         if self.use_tb:
             metrics['batch_reward'] = reward.mean().item()

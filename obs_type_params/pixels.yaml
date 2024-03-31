@@ -1,0 +1,5 @@
+
+obs_type: pixels
+action_repeat: 2
+batch_size: 256
+

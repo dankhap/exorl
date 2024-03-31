@@ -1,0 +1,5 @@
+
+obs_type: states
+action_repeat: 1
+batch_size: 1024
+

@@ -31,22 +31,34 @@ def load_episode(fn):
         return episode
 
 
-def relable_episode(env, episode):
+def relable_episode(env, episode, render_kwargs, stack_frames):
     rewards = []
+    pixels = []
     reward_spec = env.reward_spec()
     states = episode['physics']
+    image = None
     for i in range(states.shape[0]):
         with env.physics.reset_context():
             env.physics.set_state(states[i])
+        image = env.physics.render(**render_kwargs)
+        pixels.append(image)
         reward = env.task.get_reward(env.physics)
         reward = np.full(reward_spec.shape, reward, reward_spec.dtype)
         rewards.append(reward)
     episode['reward'] = np.array(rewards, dtype=reward_spec.dtype)
+    pixels = restack(pixels, stack_frames)
+    episode['pixels'] = np.stack(pixels)
     return episode
+
+def restack(pixels, stack_size):
+    pixels = [pixels[0]] * (stack_size - 1) + pixels
+    stacked_pixels = [np.array(pixels[i:i + stack_size]) for i in range(len(pixels) - stack_size + 1)]
+    return stacked_pixels
+    
 
 
 class OfflineReplayBuffer(IterableDataset):
-    def __init__(self, env, replay_dir, max_size, num_workers, discount):
+    def __init__(self, env, replay_dir, max_size, num_workers, discount, obs_type):
         self._env = env
         self._replay_dir = replay_dir
         self._size = 0
@@ -56,6 +68,10 @@ class OfflineReplayBuffer(IterableDataset):
         self._episodes = dict()
         self._discount = discount
         self._loaded = False
+        self.render_kwargs = {}
+        self._obs_type = obs_type
+        self._frame_stack = 3
+        self._obs_key = 'pixels' if obs_type == 'pixels' else 'observation'
 
     def _load(self, relable=True):
         print('Labeling data...')
@@ -85,15 +101,15 @@ class OfflineReplayBuffer(IterableDataset):
         return self._episodes[eps_fn]
 
     def _relable_reward(self, episode):
-        return relable_episode(self._env, episode)
+        return relable_episode(self._env, episode, self.render_kwargs, self._frame_stack)
 
     def _sample(self):
         episode = self._sample_episode()
         # add +1 for the first dummy transition
         idx = np.random.randint(0, episode_len(episode)) + 1
-        obs = episode['observation'][idx - 1]
+        obs = episode[self._obs_key][idx - 1]
         action = episode['action'][idx]
-        next_obs = episode['observation'][idx]
+        next_obs = episode[self._obs_key][idx]
         reward = episode['reward'][idx]
         discount = episode['discount'][idx] * self._discount
         return (obs, action, reward, discount, next_obs)
@@ -104,13 +120,13 @@ class OfflineReplayBuffer(IterableDataset):
 
 
 def _worker_init_fn(worker_id):
-    seed = np.random.get_state()[1][0] + worker_id
+    seed = int(np.random.get_state()[1][0]) + worker_id
     np.random.seed(seed)
     random.seed(seed)
 
 
 def make_replay_loader(env, replay_dir, max_size, batch_size, num_workers,
-                       discount):
+                       discount, obs_type):
     max_size_per_worker = max_size // max(1, num_workers)
 
     iterable = OfflineReplayBuffer(env, replay_dir, max_size_per_worker,

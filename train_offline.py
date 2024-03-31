@@ -63,6 +63,7 @@ def main(cfg):
     work_dir = Path.cwd()
     print(f'workspace: {work_dir}')
 
+    print(f'slurm job id: {os.environ["SLURM_JOB_ID"]}')
     utils.set_seed_everywhere(cfg.seed)
     device = torch.device(cfg.device)
 

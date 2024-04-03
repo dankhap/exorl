@@ -135,6 +135,12 @@ class CQLAgent:
                                             device=device)
 
         # optimizers
+        if obs_type == 'pixels':
+            self.encoder_opt = torch.optim.Adam(self.encoder.parameters(),
+                                                lr=lr)
+        else:
+            self.encoder_opt = None
+
         self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=lr)
         self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=lr)
         self.actor_alpha_opt = torch.optim.Adam([self.log_actor_alpha], lr=lr)
@@ -146,6 +152,7 @@ class CQLAgent:
 
     def train(self, training=True):
         self.training = training
+        self.encoder.train(training)
         self.actor.train(training)
         self.critic.train(training)
 
@@ -253,9 +260,13 @@ class CQLAgent:
         critic_loss = critic_loss + alpha * cql_penalty
 
         # optimize critic
+        if self.encoder_opt is not None:
+            self.encoder_opt.zero_grad(set_to_none=True)
         self.critic_opt.zero_grad(set_to_none=True)
         critic_loss.backward()
         self.critic_opt.step()
+        if self.encoder_opt is not None:
+            self.encoder_opt.step()
 
         if self.use_tb:
             metrics['critic_target_q'] = target_Q.mean().item()

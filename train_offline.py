@@ -89,12 +89,12 @@ def main(cfg):
 
     # create logger
     logger = Logger(work_dir, use_tb=cfg.use_tb)
+    obs_type = cfg.obs_type_params.obs_type
 
     # create envs
-    env = dmc.make(cfg.task, seed=cfg.seed)
+    env = dmc.make(cfg.task, obs_type=obs_type, frame_stack=cfg.frame_stack, seed=cfg.seed)
     env.domain = cfg.task.split('_')[0]
 
-    obs_type = cfg.obs_type_params.obs_type
 
     # create agent
     cfg.agent.obs_type = obs_type

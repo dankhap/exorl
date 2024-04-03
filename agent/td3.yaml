@@ -8,6 +8,7 @@ device: ${device}
 lr: 1e-4
 critic_target_tau: 0.01
 use_tb: ${use_tb}
+feature_dim: 50
 hidden_dim: 1024
 stddev_schedule: 0.2
 stddev_clip: 0.3

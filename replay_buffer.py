@@ -56,9 +56,15 @@ def relable_episode(env, episode, render_kwargs, stack_frames):
     return episode
 
 def restack(pixels, stack_size):
-    pixels = [pixels[0]] * (stack_size - 1) + pixels
-    stacked_pixels = [np.array(pixels[i:i + stack_size]) for i in range(len(pixels) - stack_size + 1)]
-    return stacked_pixels
+    pixels = pixels.transpose(0, 3, 1, 2)
+    first = np.expand_dims(pixels[0], axis=0)
+    fst = np.repeat(first, stack_size, axis=0)
+    pixels = np.concatenate([fst, pixels])
+    obs = []
+    for i in range(len(pixels) - stack_size + 1):
+        obs.append(np.concatenate(list(pixels[i:i + stack_size])))
+
+    return np.array(obs)
     
 
 
@@ -97,8 +103,10 @@ class OfflineReplayBuffer(IterableDataset):
                 continue
             episode = load_episode(eps_fn)
             if relable:
+                has_pix = 'pixels' in episode
                 episode = self._relable_reward(episode)
-                save_episode(episode, eps_fn)
+                if not has_pix and 'pixels' in episode:
+                    save_episode(episode, eps_fn)
 
             # simulate a stack of frames
             if len(episode['pixels'].shape) == 4 and self._obs_type == 'pixels':

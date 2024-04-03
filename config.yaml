@@ -26,7 +26,7 @@ device: cuda
 save_video: true
 use_tb: false
 
-relable: false
+relable: true
 frame_stack: 3
 
 

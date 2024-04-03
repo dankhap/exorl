@@ -92,9 +92,12 @@ def main(cfg):
 
     # create envs
     env = dmc.make(cfg.task, seed=cfg.seed)
+    env.domain = cfg.task.split('_')[0]
+
+    obs_type = cfg.obs_type_params.obs_type
 
     # create agent
-    cfg.agent.obs_type = cfg.obs_type
+    cfg.agent.obs_type = obs_type
     agent = hydra.utils.instantiate(cfg.agent,
                                     obs_shape=env.observation_spec().shape,
                                     action_shape=env.action_spec().shape)
@@ -109,11 +112,13 @@ def main(cfg):
     replay_dir = datasets_dir.resolve() / domain / cfg.expl_agent / 'buffer'
     print(f'replay dir: {replay_dir}')
 
+
     replay_loader = make_replay_loader(env, replay_dir, cfg.replay_buffer_size,
                                        cfg.batch_size,
                                        cfg.replay_buffer_num_workers,
                                        cfg.discount,
-                                       cfg.obs_type)
+                                       obs_type,
+                                       cfg.relable)
     replay_iter = iter(replay_loader)
 
     # create video recorders

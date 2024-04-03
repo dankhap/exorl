@@ -1,3 +1,4 @@
+from tqdm import tqdm
 import datetime
 import io
 import random
@@ -36,18 +37,22 @@ def relable_episode(env, episode, render_kwargs, stack_frames):
     pixels = []
     reward_spec = env.reward_spec()
     states = episode['physics']
+    load_pixels = 'pixels' not in episode
+
     image = None
     for i in range(states.shape[0]):
         with env.physics.reset_context():
             env.physics.set_state(states[i])
-        image = env.physics.render(**render_kwargs)
-        pixels.append(image)
+        if load_pixels:
+            env.physics.render(**render_kwargs)
+            image = env.physics.render(**render_kwargs)
+            pixels.append(image)
         reward = env.task.get_reward(env.physics)
         reward = np.full(reward_spec.shape, reward, reward_spec.dtype)
         rewards.append(reward)
     episode['reward'] = np.array(rewards, dtype=reward_spec.dtype)
-    pixels = restack(pixels, stack_frames)
-    episode['pixels'] = np.stack(pixels)
+    if load_pixels:
+        episode['pixels'] = np.stack(pixels)
     return episode
 
 def restack(pixels, stack_size):
@@ -58,7 +63,7 @@ def restack(pixels, stack_size):
 
 
 class OfflineReplayBuffer(IterableDataset):
-    def __init__(self, env, replay_dir, max_size, num_workers, discount, obs_type):
+    def __init__(self, env, replay_dir, max_size, num_workers, discount, obs_type, relable):
         self._env = env
         self._replay_dir = replay_dir
         self._size = 0
@@ -68,19 +73,23 @@ class OfflineReplayBuffer(IterableDataset):
         self._episodes = dict()
         self._discount = discount
         self._loaded = False
-        self.render_kwargs = {}
         self._obs_type = obs_type
         self._frame_stack = 3
         self._obs_key = 'pixels' if obs_type == 'pixels' else 'observation'
+        self._relable = relable
 
-    def _load(self, relable=True):
+        camera_id = dict(quadruped=2).get(env.domain, 0)
+        self.render_kwargs = dict(height=84, width=84, camera_id=camera_id)
+
+    def _load(self, relable):
         print('Labeling data...')
         try:
             worker_id = torch.utils.data.get_worker_info().id
         except:
             worker_id = 0
         eps_fns = sorted(self._replay_dir.glob('*.npz'))
-        for eps_fn in eps_fns:
+    
+        for eps_fn in tqdm(eps_fns):
             if self._size > self._max_size:
                 break
             eps_idx, eps_len = [int(x) for x in eps_fn.stem.split('_')[1:]]
@@ -89,13 +98,19 @@ class OfflineReplayBuffer(IterableDataset):
             episode = load_episode(eps_fn)
             if relable:
                 episode = self._relable_reward(episode)
+                save_episode(episode, eps_fn)
+
+            # simulate a stack of frames
+            if len(episode['pixels'].shape) == 4 and self._obs_type == 'pixels':
+                episode['pixels'] = restack(episode['pixels'], self._frame_stack)
             self._episode_fns.append(eps_fn)
+            
             self._episodes[eps_fn] = episode
             self._size += episode_len(episode)
 
     def _sample_episode(self):
         if not self._loaded:
-            self._load()
+            self._load(self._relable)
             self._loaded = True
         eps_fn = random.choice(self._episode_fns)
         return self._episodes[eps_fn]
@@ -126,11 +141,11 @@ def _worker_init_fn(worker_id):
 
 
 def make_replay_loader(env, replay_dir, max_size, batch_size, num_workers,
-                       discount, obs_type):
+                       discount, obs_type, relable):
     max_size_per_worker = max_size // max(1, num_workers)
 
     iterable = OfflineReplayBuffer(env, replay_dir, max_size_per_worker,
-                                   num_workers, discount)
+                                   num_workers, discount, obs_type, relable)
 
     loader = torch.utils.data.DataLoader(iterable,
                                          batch_size=batch_size,

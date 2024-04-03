@@ -1,6 +1,7 @@
 # @package agent
 _target_: agent.td3.TD3Agent
 name: td3
+obs_type: ??? # to be specified later
 obs_shape: ??? # to be specified later
 action_shape: ??? # to be specified later
 device: ${device}

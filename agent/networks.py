@@ -58,7 +58,9 @@ class Encoder(nn.Module):
         super().__init__()
 
         assert len(obs_shape) == 3
-        self.repr_dim = 32 * 35 * 35
+        # self.repr_dim = 32 * 35 * 35
+        # Moved from size 84 in URLB to 64 in MURLB
+        self.repr_dim = 32 * 25 * 25
 
         self.convnet = nn.Sequential(nn.Conv2d(obs_shape[0], 32, 3, stride=2),
                                      nn.ReLU(), nn.Conv2d(32, 32, 3, stride=1),

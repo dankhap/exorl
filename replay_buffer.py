@@ -32,18 +32,19 @@ def load_episode(fn):
         return episode
 
 
-def relable_episode(env, episode, render_kwargs, stack_frames):
+def relable_episode(env, episode, render_kwargs, load_pixels=False):
     rewards = []
     pixels = []
     reward_spec = env.reward_spec()
-    states = episode['physics']
-    load_pixels = 'pixels' not in episode
+    states = episode['physics'] if 'physics' in episode else episode['physics_state']
+    has_pixels = 'pixels' in episode or 'physics_state' in episode
+    need_pixels_load = load_pixels and not has_pixels
 
     image = None
     for i in range(states.shape[0]):
         with env.physics.reset_context():
             env.physics.set_state(states[i])
-        if load_pixels:
+        if need_pixels_load:
             env.physics.render(**render_kwargs)
             image = env.physics.render(**render_kwargs)
             pixels.append(image)
@@ -51,12 +52,14 @@ def relable_episode(env, episode, render_kwargs, stack_frames):
         reward = np.full(reward_spec.shape, reward, reward_spec.dtype)
         rewards.append(reward)
     episode['reward'] = np.array(rewards, dtype=reward_spec.dtype)
-    if load_pixels:
+    if need_pixels_load:
         episode['pixels'] = np.stack(pixels)
+    elif 'pixels' not in episode:
+        episode['pixels'] = episode['observation']
     return episode
 
 def restack(pixels, stack_size):
-    pixels = pixels.transpose(0, 3, 1, 2)
+    # pixels = pixels.transpose(0, 3, 1, 2)
     first = np.expand_dims(pixels[0], axis=0)
     fst = np.repeat(first, stack_size, axis=0)
     pixels = np.concatenate([fst, pixels])
@@ -95,18 +98,22 @@ class OfflineReplayBuffer(IterableDataset):
             worker_id = 0
         eps_fns = sorted(self._replay_dir.glob('*.npz'))
     
-        for eps_fn in tqdm(eps_fns):
+        for eps_idx, eps_fn in tqdm(enumerate(eps_fns)):
             if self._size > self._max_size:
                 break
-            eps_idx, eps_len = [int(x) for x in eps_fn.stem.split('_')[1:]]
+            if '_' in eps_fn.stem:
+                # original offlineRL dataset
+                eps_idx, eps_len = [int(x) for x in eps_fn.stem.split('_')[1:]]
+            else:
+                # adapted dataset from murlb 
+                eps_idx, eps_len =  0, int(eps_fn.stem.split('-')[-1])
+                
+
             if eps_idx % self._num_workers != worker_id:
                 continue
             episode = load_episode(eps_fn)
             if relable:
-                has_pix = 'pixels' in episode
                 episode = self._relable_reward(episode)
-                if not has_pix and 'pixels' in episode:
-                    save_episode(episode, eps_fn)
 
             # simulate a stack of frames
             if len(episode['pixels'].shape) == 4 and self._obs_type == 'pixels':
@@ -124,7 +131,7 @@ class OfflineReplayBuffer(IterableDataset):
         return self._episodes[eps_fn]
 
     def _relable_reward(self, episode):
-        return relable_episode(self._env, episode, self.render_kwargs, self._frame_stack)
+        return relable_episode(self._env, episode, self.render_kwargs, self._obs_type == 'pixels')
 
     def _sample(self):
         episode = self._sample_episode()

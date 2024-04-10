@@ -6,75 +6,44 @@ import torch.nn.functional as F
 from collections import OrderedDict
 
 import utils
+from agent.networks import Critic, Encoder
 from dm_control.utils import rewards
 
-class Encoder(nn.Module):
-    def __init__(self, obs_shape):
-        super().__init__()
-
-        assert len(obs_shape) == 3
-        self.repr_dim = 32 * 35 * 35
-
-        self.convnet = nn.Sequential(nn.Conv2d(obs_shape[0], 32, 3, stride=2),
-                                     nn.ReLU(), nn.Conv2d(32, 32, 3, stride=1),
-                                     nn.ReLU(), nn.Conv2d(32, 32, 3, stride=1),
-                                     nn.ReLU(), nn.Conv2d(32, 32, 3, stride=1),
-                                     nn.ReLU())
-
-        self.apply(utils.weight_init)
-
-    def forward(self, obs):
-        obs = obs / 255.0 - 0.5
-        h = self.convnet(obs)
-        h = h.view(h.shape[0], -1)
-        return h
-
 class Actor(nn.Module):
-    def __init__(self, obs_dim, action_dim, hidden_dim):
+    def __init__(self, obs_type, obs_dim, action_dim, feature_dim, hidden_dim):
         super().__init__()
 
-        self.policy = nn.Sequential(nn.Linear(obs_dim, hidden_dim),
-                                    nn.LayerNorm(hidden_dim), nn.Tanh(),
-                                    nn.Linear(hidden_dim, hidden_dim),
-                                    nn.ReLU(inplace=True),
-                                    nn.Linear(hidden_dim, 2 * action_dim))
+        feature_dim = feature_dim if obs_type == 'pixels' else hidden_dim
+
+        self.trunk = nn.Sequential(nn.Linear(obs_dim, feature_dim),
+                                   nn.LayerNorm(feature_dim), nn.Tanh())
+
+        policy_layers = []
+        policy_layers += [
+            nn.Linear(feature_dim, hidden_dim),
+            nn.ReLU(inplace=True)
+        ]
+        # add additional hidden layer for pixels
+        if obs_type == 'pixels':
+            policy_layers += [
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(inplace=True)
+            ]
+        policy_layers += [nn.Linear(hidden_dim, 2 * action_dim)]
+
+        self.policy = nn.Sequential(*policy_layers)
 
         self.apply(utils.weight_init)
 
     def forward(self, obs):
-        mu, log_std = self.policy(obs).chunk(2, dim=-1)
+        h = self.trunk(obs)
 
+        mu, log_std = self.policy(h).chunk(2, dim=-1)
         mu = torch.tanh(mu)
         std = log_std.clamp(-10, 2).exp()
 
         dist = utils.SquashedNormal(mu, std)
         return dist
-
-
-class Critic(nn.Module):
-    def __init__(self, obs_dim, action_dim, hidden_dim):
-        super().__init__()
-
-        self.q1_net = nn.Sequential(
-            nn.Linear(obs_dim + action_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim), nn.Tanh(),
-            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, 1))
-
-        self.q2_net = nn.Sequential(
-            nn.Linear(obs_dim + action_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim), nn.Tanh(),
-            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, 1))
-
-        self.apply(utils.weight_init)
-
-    def forward(self, obs, action):
-        obs_action = torch.cat([obs, action], dim=-1)
-        q1 = self.q1_net(obs_action)
-        q2 = self.q2_net(obs_action)
-
-        return q1, q2
 
 
 class CQLAgent:
@@ -85,6 +54,7 @@ class CQLAgent:
                  action_shape,
                  device,
                  lr,
+                 feature_dim,
                  hidden_dim,
                  critic_target_tau,
                  nstep,
@@ -117,12 +87,13 @@ class CQLAgent:
             self.encoder = nn.Identity()
             self.obs_dim = obs_shape[0] 
         # models
-        self.actor = Actor(obs_shape[0], action_shape[0],
-                           hidden_dim).to(device)
-        self.critic = Critic(obs_shape[0], action_shape[0],
-                             hidden_dim).to(device)
-        self.critic_target = Critic(obs_shape[0], action_shape[0],
-                                    hidden_dim).to(device)
+        self.actor = Actor(obs_type, self.obs_dim, action_shape[0],
+                             feature_dim, hidden_dim).to(device)
+
+        self.critic = Critic(obs_type, self.obs_dim, action_shape[0],
+                             feature_dim, hidden_dim).to(device)
+        self.critic_target = Critic(obs_type, self.obs_dim, action_shape[0],
+                                    feature_dim, hidden_dim).to(device)
         self.critic_target.load_state_dict(self.critic.state_dict())
 
         # lagrange multipliers
@@ -329,7 +300,7 @@ class CQLAgent:
             self.update_critic(obs, action, reward, discount, next_obs, step))
 
         # update actor
-        metrics.update(self.update_actor(obs, action, step))
+        metrics.update(self.update_actor(obs.detach(), action, step))
 
         # update critic target
         utils.soft_update_params(self.critic, self.critic_target,

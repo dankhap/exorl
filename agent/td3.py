@@ -1,35 +1,9 @@
-import hydra
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from collections import OrderedDict
 
 import utils
 from agent.networks import Critic, Encoder
-from dm_control.utils import rewards
-
-
-
-# class Actor(nn.Module):
-#     def __init__(self, obs_dim, action_dim, hidden_dim):
-#         super().__init__()
-
-#         self.policy = nn.Sequential(nn.Linear(obs_dim, hidden_dim),
-#                                     nn.LayerNorm(hidden_dim), nn.Tanh(),
-#                                     nn.Linear(hidden_dim, hidden_dim),
-#                                     nn.ReLU(inplace=True),
-#                                     nn.Linear(hidden_dim, action_dim))
-
-#         self.apply(utils.weight_init)
-
-#     def forward(self, obs, std):
-#         mu = self.policy(obs)
-#         mu = torch.tanh(mu)
-#         std = torch.ones_like(mu) * std
-
-#         dist = utils.TruncatedNormal(mu, std)
-#         return dist
 
 class Actor(nn.Module):
     def __init__(self, obs_type, obs_dim, action_dim, feature_dim, hidden_dim):
@@ -66,33 +40,6 @@ class Actor(nn.Module):
 
         dist = utils.TruncatedNormal(mu, std)
         return dist
-
-
-# class Critic(nn.Module):
-#     def __init__(self, obs_dim, action_dim, hidden_dim):
-#         super().__init__()
-
-#         self.q1_net = nn.Sequential(
-#             nn.Linear(obs_dim + action_dim, hidden_dim),
-#             nn.LayerNorm(hidden_dim), nn.Tanh(),
-#             nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True),
-#             nn.Linear(hidden_dim, 1))
-
-#         self.q2_net = nn.Sequential(
-#             nn.Linear(obs_dim + action_dim, hidden_dim),
-#             nn.LayerNorm(hidden_dim), nn.Tanh(),
-#             nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True),
-#             nn.Linear(hidden_dim, 1))
-
-#         self.apply(utils.weight_init)
-
-#     def forward(self, obs, action):
-#         obs_action = torch.cat([obs, action], dim=-1)
-#         q1 = self.q1_net(obs_action)
-#         q2 = self.q2_net(obs_action)
-
-#         return q1, q2
-
 
 class TD3Agent:
     def __init__(self,

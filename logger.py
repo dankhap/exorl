@@ -58,9 +58,16 @@ class MetersGroup(object):
         with self._csv_file_name.open('r') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if float(row['episode']) >= data['episode']:
-                    break
-                rows.append(row)
+                if 'episode' in row:
+                    # BUGFIX: covers weird cases where CSV are badly written
+                    if row['episode'] == '': 
+                        rows.append(row)
+                        continue
+                    if type(row['episode']) == type(None):
+                        continue
+                    if float(row['episode']) >= data['episode']:
+                        break
+                    rows.append(row)
         with self._csv_file_name.open('w') as f:
             writer = csv.DictWriter(f,
                                     fieldnames=sorted(data.keys()),

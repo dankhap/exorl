@@ -19,7 +19,7 @@ import utils
 from logger import Logger
 from replay_buffer import make_replay_loader
 from video import VideoRecorder
-
+from omegaconf import open_dict
 torch.backends.cudnn.benchmark = True
 
 
@@ -99,6 +99,8 @@ def main(cfg):
     logger = Logger(work_dir, use_tb=cfg.use_tb, use_wandb=cfg.use_wandb)
     obs_type = cfg.obs_type_params.obs_type
     cfg.wandb_group = cfg.agent.name if cfg.wandb_group == "" else cfg.wandb_group
+    with open_dict(cfg):
+        cfg.slurm_id = os.environ['SLURM_JOB_ID']
     
     
     # create envs

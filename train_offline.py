@@ -8,7 +8,7 @@ os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
 os.environ['MUJOCO_GL'] = 'egl'
 
 from pathlib import Path
-
+import wandb
 import hydra
 import numpy as np
 import torch
@@ -31,6 +31,14 @@ def get_domain(task):
 
 def get_data_seed(seed, num_data_seeds):
     return (seed - 1) % num_data_seeds + 1
+
+def setup_wandb(cfg, obs_type):
+     exp_name = '_'.join([
+         cfg.experiment, cfg.agent.name, cfg.task, obs_type,
+         str(cfg.seed)
+     ])
+     wandb.init(project=cfg.project_name + "_pretrain", group=cfg.wandb_group, name=exp_name)     
+     wandb.config.update(cfg)   
 
 
 def eval(global_step, agent, env, logger, num_eval_episodes, video_recorder):
@@ -88,12 +96,17 @@ def main(cfg):
     device = torch.device(cfg.device)
 
     # create logger
-    logger = Logger(work_dir, use_tb=cfg.use_tb)
+    logger = Logger(work_dir, use_tb=cfg.use_tb, use_wandb=cfg.use_wandb)
     obs_type = cfg.obs_type_params.obs_type
-
+    cfg.wandb_group = cfg.agent.name if cfg.wandb_group == "" else cfg.wandb_group
+    
+    
     # create envs
     env = dmc.make(cfg.task, obs_type=obs_type, frame_stack=cfg.frame_stack, seed=cfg.seed)
     env.domain = cfg.task.split('_')[0]
+
+    if cfg.use_wandb:
+        setup_wandb(cfg, obs_type)
 
 
     # create agent
@@ -105,6 +118,7 @@ def main(cfg):
     # create replay buffer
     data_specs = (env.observation_spec(), env.action_spec(), env.reward_spec(),
                   env.discount_spec())
+
 
     # create data storage
     domain = get_domain(cfg.task)

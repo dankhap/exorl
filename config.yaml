@@ -3,6 +3,9 @@ defaults:
   - obs_type_params: states
   - override hydra/launcher: submitit_local
 
+project_name: uorl
+experiment: uorl_exorl
+wandb_group: test_exorl
 # unsupervised exploration
 expl_agent: proto
 # task settings
@@ -25,6 +28,7 @@ seed: 1
 device: cuda
 save_video: true
 use_tb: false
+use_wandb: false
 
 relable: true
 frame_stack: 3

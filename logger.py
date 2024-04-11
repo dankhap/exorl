@@ -5,6 +5,7 @@ from collections import defaultdict
 import numpy as np
 import torch
 import torchvision
+import wandb
 from termcolor import colored
 from torch.utils.tensorboard import SummaryWriter
 
@@ -30,12 +31,13 @@ class AverageMeter(object):
 
 
 class MetersGroup(object):
-    def __init__(self, csv_file_name, formating):
+    def __init__(self, csv_file_name, formating, use_wandb):
         self._csv_file_name = csv_file_name
         self._formating = formating
         self._meters = defaultdict(AverageMeter)
         self._csv_file = None
         self._csv_writer = None
+        self.use_wandb = use_wandb
 
     def log(self, key, value, n=1):
         self._meters[key].update(value, n)
@@ -104,27 +106,36 @@ class MetersGroup(object):
             pieces.append(self._format(disp_key, value, ty))
         print(' | '.join(pieces))
 
+    def _dump_to_wandb(self, data):
+        wandb.log(data)
+
     def dump(self, step, prefix):
         if len(self._meters) == 0:
             return
         data = self._prime_meters()
         data['frame'] = step
+        if self.use_wandb:
+            wandb_data = {prefix + '/' + key: val for key, val in data.items()}
+            self._dump_to_wandb(data=wandb_data)
         self._dump_to_csv(data)
         self._dump_to_console(data, prefix)
         self._meters.clear()
 
 
 class Logger(object):
-    def __init__(self, log_dir, use_tb, offline=False):
+    def __init__(self, log_dir, use_tb, use_wandb, offline=False):
         self._log_dir = log_dir
         self._train_mg = MetersGroup(log_dir / 'train.csv',
-                                     formating=TRAIN_FORMAT)
+                                     formating=TRAIN_FORMAT,
+                                     use_wandb=use_wandb)
         self._eval_mg = MetersGroup(log_dir / 'eval.csv',
-                                    formating=EVAL_FORMAT)
+                                    formating=EVAL_FORMAT,
+                                    use_wandb=use_wandb)
         if use_tb:
             self._sw = SummaryWriter(str(log_dir / 'tb'))
         else:
             self._sw = None
+        self.use_wandb = use_wandb
 
     def _try_sw_log(self, key, value, step):
         if self._sw is not None:

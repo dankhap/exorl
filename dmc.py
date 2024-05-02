@@ -50,8 +50,8 @@ class FlattenJacoObservationWrapper(dm_env.Environment):
             assert spec.dtype == np.float64
             assert type(spec) == specs.Array
         dim = np.sum(
-            np.fromiter((np.int(np.prod(spec.shape))
-                         for spec in wrapped_obs_spec.values()), np.int32))
+            np.fromiter((int(np.prod(spec.shape))
+                         for spec in wrapped_obs_spec.values()), int))
 
         self._obs_spec['observations'] = specs.Array(shape=(dim,),
                                                      dtype=np.float32,

@@ -68,6 +68,8 @@ class MetersGroup(object):
                     if float(row['episode']) >= data['episode']:
                         break
                     rows.append(row)
+                else:
+                    print("failed parsing row: ", row)
         with self._csv_file_name.open('w') as f:
             writer = csv.DictWriter(f,
                                     fieldnames=sorted(data.keys()),

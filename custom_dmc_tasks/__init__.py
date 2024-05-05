@@ -2,7 +2,7 @@ from custom_dmc_tasks import cheetah
 from custom_dmc_tasks import walker
 from custom_dmc_tasks import hopper
 from custom_dmc_tasks import quadruped
-from custom_dmc_tasks import jaco
+from custom_dmc_tasks import jaco_murlb as jaco
 from custom_dmc_tasks import point_mass_maze
 
 
